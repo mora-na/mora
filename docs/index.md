@@ -24,5 +24,5 @@ features:
     link: https://github.com/mora-na/demo
   - title: sudo
     details: sudo game
-    link: 
+    link: /sudo
 ---

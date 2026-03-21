@@ -22,7 +22,8 @@ export default defineConfig({
         text: 'Fragments',
         items: [
           { text: 'Article', link: '/article' },
-          { text: 'Command', link: '/command' }
+          { text: 'Command', link: '/command' },
+          { text: 'Sudo', link: '/sudo' },
         ]
       }
     ],

@@ -1,7 +1,8 @@
-import { defineConfig } from 'vitepress'
+import {defineConfig} from 'vitepress'
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
+  base: '/mora/',
   title: "mora",
   description: "just a blog",
   themeConfig: {

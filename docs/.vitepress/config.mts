@@ -1,6 +1,6 @@
 import {defineConfig} from 'vitepress'
 
-const base = process.env.GITHUB_ACTIONS === 'true' ? '/mora/' : '/'
+const base = '/'
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({

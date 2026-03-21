@@ -14,21 +14,21 @@ export default defineConfig({
     // https://vitepress.dev/reference/default-theme-config
     nav: [
       { text: 'Home', link: '/' },
-      { text: 'Examples', link: '/markdown-examples' }
+      { text: 'Fragments', link: '/article' }
     ],
 
     sidebar: [
       {
-        text: 'Examples',
+        text: 'Fragments',
         items: [
-          { text: 'Markdown Examples', link: '/markdown-examples' },
-          { text: 'Runtime API Examples', link: '/api-examples' }
+          { text: 'Article', link: '/article' },
+          { text: 'Command', link: '/command' }
         ]
       }
     ],
 
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/mora-na/mora' }
+      { icon: 'github', link: 'https://github.com/mora-na' }
     ]
   }
 })

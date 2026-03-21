@@ -31,27 +31,10 @@ jobs:
       - name: Build
         run: npm run docs:build
 
-      - name: Prepare publish dir
-        run: |
-          rm -rf gh-pages
-          mkdir -p gh-pages/dist
-          cp -a docs/.vitepress/dist/. gh-pages/dist/
-          cp -a gh-pages/dist/. gh-pages/
-          mkdir -p gh-pages/source
-          rsync -a \
-            --exclude ".git" \
-            --exclude "node_modules" \
-            --exclude ".idea" \
-            --exclude "*.iml" \
-            --exclude "docs/.vitepress/cache" \
-            --exclude "docs/.vitepress/dist" \
-            --exclude "gh-pages" \
-            ./ gh-pages/source/
-
       - name: Deploy
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_branch: gh-pages
-          publish_dir: gh-pages
+          publish_dir: docs/.vitepress/dist
           force_orphan: true

@@ -1,10 +1,15 @@
 import {defineConfig} from 'vitepress'
 
+const base = process.env.GITHUB_ACTIONS === 'true' ? '/mora/' : '/'
+
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
-  base: '/mora/',
+  base,
   title: "mora",
   description: "just a blog",
+  head: [
+    ['link', { rel: 'icon', type: 'image/png', href: `${base}favicon.png` }],
+  ],
   themeConfig: {
     // https://vitepress.dev/reference/default-theme-config
     nav: [

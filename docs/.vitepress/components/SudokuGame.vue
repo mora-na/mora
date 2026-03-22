@@ -112,8 +112,8 @@
                 id="speed"
                 type="range"
                 min="0"
-                max="400"
-                step="5"
+                max="100"
+                step="1"
                 v-model.number="speed"
               />
               <div class="slider-hint">Backtracking is shown live.</div>
@@ -130,7 +130,7 @@ import {computed, nextTick, onMounted, ref, watch} from 'vue';
 
 const grid = ref(makeGrid());
 const difficulty = ref(3);
-const speed = ref(220);
+const speed = ref(50);
 const solving = ref(false);
 const paused = ref(false);
 const abortSolve = ref(false);

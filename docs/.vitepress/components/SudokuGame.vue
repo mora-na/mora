@@ -133,6 +133,7 @@ const difficulty = ref(3);
 const speed = ref(220);
 const solving = ref(false);
 const paused = ref(false);
+const abortSolve = ref(false);
 const statusMessage = ref('Ready');
 const statusState = ref('idle');
 
@@ -157,6 +158,13 @@ onMounted(() => {
 watch(difficulty, () => {
   if (!solving.value) {
     generateNewPuzzle();
+  }
+});
+
+watch(speed, (nextSpeed) => {
+  if (solving.value && nextSpeed === 0) {
+    abortSolve.value = true;
+    paused.value = false;
   }
 });
 
@@ -249,11 +257,32 @@ async function solveAnimated() {
   }
   solving.value = true;
   paused.value = false;
+  abortSolve.value = false;
   setStatus('Solving with backtracking...', 'solving');
-  const board = boardFromGrid();
-  const solved = await solveBoard(board);
+  const startBoard = boardFromGrid();
+  const board = startBoard.map((row) => row.slice());
+  let solved = false;
+  if (speed.value === 0) {
+    solved = solveBoardInstant(board);
+    if (solved) {
+      applySolutionToGrid(board);
+    }
+  } else {
+    const result = await solveBoard(board);
+    if (result === null && abortSolve.value) {
+      const finalBoard = startBoard.map((row) => row.slice());
+      const instantSolved = solveBoardInstant(finalBoard);
+      if (instantSolved) {
+        applySolutionToGrid(finalBoard);
+      }
+      solved = instantSolved;
+    } else {
+      solved = result === true;
+    }
+  }
   solving.value = false;
   paused.value = false;
+  abortSolve.value = false;
   if (solved) {
     setStatus('Solved.', 'ok');
   } else {
@@ -418,20 +447,38 @@ function shuffledNumbers() {
 }
 
 async function solveBoard(board) {
+  if (abortSolve.value) return null;
+  const empty = findEmpty(board);
+  if (!empty) return true;
+  const [row, col] = empty;
+  for (const num of shuffledNumbers()) {
+    if (abortSolve.value) return null;
+    if (!isValid(board, row, col, num)) continue;
+    await applyStep(board, row, col, num, 'fill');
+    const result = await solveBoard(board);
+    if (result === true) return true;
+    if (result === null) return null;
+    await applyStep(board, row, col, 0, 'backtrack');
+  }
+  return false;
+}
+
+function solveBoardInstant(board) {
   const empty = findEmpty(board);
   if (!empty) return true;
   const [row, col] = empty;
   for (const num of shuffledNumbers()) {
     if (!isValid(board, row, col, num)) continue;
-    await applyStep(board, row, col, num, 'fill');
-    if (await solveBoard(board)) return true;
-    await applyStep(board, row, col, 0, 'backtrack');
+    board[row][col] = num;
+    if (solveBoardInstant(board)) return true;
+    board[row][col] = 0;
   }
   return false;
 }
 
 async function applyStep(board, row, col, value, flash) {
   board[row][col] = value;
+  if (abortSolve.value) return;
   const cell = grid.value[row][col];
   if (!cell.given) {
     cell.value = value;
@@ -446,9 +493,26 @@ async function applyStep(board, row, col, value, flash) {
   }
 }
 
+function applySolutionToGrid(board) {
+  for (let r = 0; r < 9; r += 1) {
+    for (let c = 0; c < 9; c += 1) {
+      const cell = grid.value[r][c];
+      const value = board[r][c];
+      cell.value = value;
+      cell.user = false;
+      cell.auto = !cell.given && value !== 0;
+      cell.flash = '';
+    }
+  }
+}
+
 function waitStep() {
   const delay = Math.max(0, speed.value);
   return new Promise((resolve) => {
+    if (abortSolve.value) {
+      resolve();
+      return;
+    }
     if (!paused.value) {
       if (delay === 0) {
         setTimeout(resolve, 0);
@@ -458,6 +522,11 @@ function waitStep() {
       return;
     }
     const timer = setInterval(() => {
+      if (abortSolve.value) {
+        clearInterval(timer);
+        resolve();
+        return;
+      }
       if (!paused.value) {
         clearInterval(timer);
         if (delay === 0) {

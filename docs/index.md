@@ -7,7 +7,7 @@ hero:
   actions:
     - theme: brand
       text: Fragments
-      link: /article
+      link: /sudoku-development-log
     - theme: alt
       text: Command
       link: /command
@@ -22,7 +22,7 @@ features:
   - title: Demo
     details: Imitate the scaffolding of the management system developed by Ruoyi
     link: https://github.com/mora-na/demo
-  - title: sudo
-    details: sudo game
-    link: /sudo
+  - title: sudoku
+    details: sudoku game
+    link: /sudoku
 ---

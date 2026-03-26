@@ -14,16 +14,16 @@ export default defineConfig({
     // https://vitepress.dev/reference/default-theme-config
     nav: [
       { text: 'Home', link: '/' },
-      { text: 'Fragments', link: '/article' }
+      { text: 'Fragments', link: '/sudoku-development-log' }
     ],
 
     sidebar: [
       {
         text: 'Fragments',
         items: [
-          { text: 'Article', link: '/article' },
+          { text: 'Sudoku Development Log', link: '/sudoku-development-log' },
           { text: 'Command', link: '/command' },
-          { text: 'Sudo', link: '/sudo' },
+          { text: 'Sudoku', link: '/sudoku' },
         ]
       }
     ],

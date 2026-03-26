@@ -1,5 +1,5 @@
 ---
-title: sudo
+title: sudoku
 pageClass: sudoku-wide
 ---
 

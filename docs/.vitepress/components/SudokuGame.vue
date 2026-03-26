@@ -5,7 +5,7 @@
         <div class="primary">
           <header class="hero">
             <div class="hero-copy">
-              <p class="eyebrow">sudo game</p>
+              <p class="eyebrow">sudoku game</p>
               <h1>Sudoku</h1>
               <p class="subtitle">
                 Rule: each row, column, and 3x3 box must contain 1-9 with no repeats.

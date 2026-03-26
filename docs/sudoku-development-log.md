@@ -149,7 +149,7 @@ This is a details block.
 Check out the documentation for the [full list of markdown extensions](https://vitepress.dev/guide/markdown).
 -->
 
-## 7. 源码精髓：题目生成（回溯填满 + 随机挖空）
+## 7. 题目生成（回溯填满 + 随机挖空）
 
 `createPuzzle()` 先调用 `fillBoard(solution)` 用回溯构造一个完整合法解，然后复制成 `puzzle`，按难度的 `removals` 随机置零：
 
@@ -229,7 +229,7 @@ function shuffledNumbers() {
 }
 ```
 
-## 8. 源码精髓：冲突检测（computeConflicts + updateConflicts）
+## 8. 冲突检测（computeConflicts + updateConflicts）
 
 冲突检测的核心是：把棋盘当作纯数字矩阵 `board`，对每个“组”（行/列/3x3 宫）收集每个数字出现的位置；某个数字在同组内出现次数 > 1，则把对应格都加入 `conflicts` 集合，最后回填到 `cell.error`。
 
@@ -296,7 +296,7 @@ function computeConflicts(board) {
 }
 ```
 
-## 9. 源码精髓：回溯求解（solveBoard + solveBoardInstant）
+## 9. 回溯求解（solveBoard + solveBoardInstant）
 
 动画版 `solveBoard()` 和瞬时版 `solveBoardInstant()` 本质同构：都以“递归找空位 + 尝试合法数字”为骨架，只是动画版用 `applyStep()` + `await waitStep()` 把过程显式展示出来。
 
@@ -337,7 +337,7 @@ function solveBoardInstant(board) {
 }
 ```
 
-## 10. 源码精髓：逐步动画与中断（applyStep + waitStep + Pause/Resume）
+## 10. 逐步动画与中断（applyStep + waitStep + Pause/Resume）
 
 `applyStep()` 负责把“尝试值/回退”同步到 `board` 和 `grid`；`waitStep()` 决定每一步展示多久，且在 `paused` 为真时轮询等待。
 

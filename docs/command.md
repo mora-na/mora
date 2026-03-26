@@ -2,48 +2,19 @@
 outline: deep
 ---
 
-# Runtime API Examples
+# 常用命令记忆
 
-This page demonstrates usage of some of the runtime APIs provided by VitePress.
+把常用命令放在这里，方便随手复制。
 
-The main `useData()` API can be used to access site, theme, and page data for the current page. It works in both `.md` and `.vue` files:
-
-```md
-<script setup>
-import { useData } from 'vitepress'
-
-const { theme, page, frontmatter } = useData()
-</script>
-
-## Results
-
-### Theme Data
-<pre>{{ theme }}</pre>
-
-### Page Data
-<pre>{{ page }}</pre>
-
-### Page Frontmatter
-<pre>{{ frontmatter }}</pre>
+```bash
+# 更新跨域设置
+openclaw config set gateway.controlUi.allowedOrigins '[\"https://your-domain\"]'
+# 展示设备列表
+openclaw devices list
+# 授权设备连接
+openclaw devices approve your_request_id
+# 完整的首次引导流程：包含 OAuth 登录 + 生成/更新基础配置
+openclaw onboard --auth-choice openai-codex
+# 只做模型提供方的 OAuth 登录/刷新
+openclaw models auth login --provider openai-codex
 ```
-
-<script setup>
-import { useData } from 'vitepress'
-
-const { site, theme, page, frontmatter } = useData()
-</script>
-
-## Results
-
-### Theme Data
-<pre>{{ theme }}</pre>
-
-### Page Data
-<pre>{{ page }}</pre>
-
-### Page Frontmatter
-<pre>{{ frontmatter }}</pre>
-
-## More
-
-Check out the documentation for the [full list of runtime APIs](https://vitepress.dev/reference/runtime-api#usedata).

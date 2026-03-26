@@ -21,9 +21,9 @@ export default defineConfig({
       {
         text: 'Fragments',
         items: [
+          { text: 'Sudoku', link: '/sudoku' },
           { text: 'Sudoku Development Log', link: '/sudoku-development-log' },
           { text: 'Command', link: '/command' },
-          { text: 'Sudoku', link: '/sudoku' },
         ]
       }
     ],

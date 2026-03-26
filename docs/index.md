@@ -1,5 +1,4 @@
 ---
-# https://vitepress.dev/reference/default-theme-home-page
 title: mora
 description: Fragments, notes, and small demos.
 layout: home

@@ -2,11 +2,23 @@
   --vp-layout-max-width: 100vw;
 }
 
+.Layout.home-portfolio {
+  --vp-layout-max-width: 100vw;
+}
+
 .Layout.sudoku-wide .VPContent {
   max-width: none;
 }
 
+.Layout.home-portfolio .VPContent {
+  max-width: none;
+}
+
 .Layout.sudoku-wide .VPContent.has-sidebar {
+  padding-right: 0;
+}
+
+.Layout.home-portfolio .VPContent.has-sidebar {
   padding-right: 0;
 }
 
@@ -17,6 +29,25 @@
 .Layout.sudoku-wide .VPDoc .vp-doc {
   max-width: none !important;
   width: 100% !important;
+}
+
+.Layout.home-portfolio .VPDoc .container,
+.Layout.home-portfolio .VPDoc .content,
+.Layout.home-portfolio .VPDoc .content-container,
+.Layout.home-portfolio .VPDoc .main,
+.Layout.home-portfolio .VPDoc .vp-doc {
+  max-width: none !important;
+  width: 100% !important;
+}
+
+.Layout.home-portfolio .VPDoc {
+  padding-left: clamp(16px, 3vw, 32px);
+  padding-right: clamp(16px, 3vw, 32px);
+}
+
+.Layout.home-portfolio .VPDoc.has-aside .content-container,
+.Layout.home-portfolio .VPDoc:not(.has-sidebar) .content {
+  max-width: none;
 }
 
 .doc-header {

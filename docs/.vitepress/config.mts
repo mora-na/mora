@@ -6,26 +6,37 @@ const base = '/'
 export default defineConfig({
   base,
   title: "mora",
-  description: "just a blog",
+  description: "技术文章、命令备忘与游戏。",
   head: [
     ['link', { rel: 'icon', type: 'image/png', href: `${base}favicon.png` }],
   ],
   themeConfig: {
-    // https://vitepress.dev/reference/default-theme-config
     nav: [
-      { text: 'Home', link: '/' },
-      { text: 'Fragments', link: '/sudoku-development-log' }
+      { text: '首页', link: '/' },
+      { text: '碎片', link: '/ohmyzsh-starship-zinit' },
+      { text: '游戏', link: '/sudoku' },
+      { text: '备忘', link: '/command' }
     ],
 
     sidebar: [
       {
-        text: 'Fragments',
+        text: '碎片',
+        items: [
+          { text: '告别 oh-my-zsh 启动卡顿', link: '/ohmyzsh-starship-zinit' },
+          { text: 'Clash Party TUN on macOS', link: '/clash-party-tun-macos' },
+          { text: 'Sudoku Development Log', link: '/sudoku-development-log' },
+        ]
+      },
+      {
+        text: '游戏',
         items: [
           { text: 'Sudoku', link: '/sudoku' },
-          { text: 'Sudoku Development Log', link: '/sudoku-development-log' },
+        ]
+      },
+      {
+        text: '备忘',
+        items: [
           { text: 'Command', link: '/command' },
-          { text: 'Clash Party TUN on macOS', link: '/clash-party-tun-macos' },
-          { text: 'Replace oh-my-zsh with Starship + Zinit', link: '/ohmyzsh-starship-zinit' },
         ]
       }
     ],

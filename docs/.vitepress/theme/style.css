@@ -18,3 +18,30 @@
   max-width: none !important;
   width: 100% !important;
 }
+
+.doc-header {
+  margin-bottom: 28px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--vp-c-divider);
+}
+
+.doc-header__title {
+  margin: 0;
+  font-size: clamp(1.6rem, 3vw, 2.2rem);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.doc-header__description {
+  margin: 14px 0 0;
+  max-width: 760px;
+  font-size: 1.05rem;
+  line-height: 1.8;
+  color: var(--vp-c-text-2);
+}
+
+.doc-header + .main .vp-doc > div > h2:first-child {
+  margin-top: 0;
+  border-top: 0;
+  padding-top: 0;
+}

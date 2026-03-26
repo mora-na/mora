@@ -1,9 +1,13 @@
 ---
 # https://vitepress.dev/reference/default-theme-home-page
+title: mora
+description: Fragments, notes, and small demos.
 layout: home
 
 hero:
-  name: "hello"
+  name: "mora"
+  text: "Fragments, notes, and demos"
+  tagline: "A small place for command notes, development logs, and interactive experiments."
   actions:
     - theme: brand
       text: Fragments

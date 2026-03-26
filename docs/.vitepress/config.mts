@@ -24,6 +24,7 @@ export default defineConfig({
           { text: 'Sudoku', link: '/sudoku' },
           { text: 'Sudoku Development Log', link: '/sudoku-development-log' },
           { text: 'Command', link: '/command' },
+          { text: 'Clash Party TUN on macOS', link: '/clash-party-tun-macos' },
         ]
       }
     ],

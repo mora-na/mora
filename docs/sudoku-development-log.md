@@ -1,9 +1,10 @@
 ---
 title: sudoku 游戏开发日志（SudokuGame）
+description: 记录 SudokuGame 从能玩到能展示算法过程的实现过程，包含校验、出题和自动解题的关键设计。
 outline: deep
 ---
 
-这篇日志记录我在 `docs/sudoku.md` 里做的 `SudokuGame`（数独）页面，从“能玩”到“能展示算法过程”的实现过程。你可以直接在这里体验：[`/sudoku`](./sudoku)。
+直接体验：[`/sudoku`](./sudoku)。
 
 ## 1. 我想实现的效果
 

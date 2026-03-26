@@ -6,7 +6,6 @@ layout: home
 
 hero:
   name: "mora"
-  text: "Fragments, notes, and demos"
   tagline: "A small place for command notes, development logs, and interactive experiments."
   actions:
     - theme: brand

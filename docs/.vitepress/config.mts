@@ -25,6 +25,7 @@ export default defineConfig({
           { text: 'Sudoku Development Log', link: '/sudoku-development-log' },
           { text: 'Command', link: '/command' },
           { text: 'Clash Party TUN on macOS', link: '/clash-party-tun-macos' },
+          { text: 'Replace oh-my-zsh with Starship + Zinit', link: '/ohmyzsh-starship-zinit' },
         ]
       }
     ],

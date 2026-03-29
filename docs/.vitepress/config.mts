@@ -22,10 +22,11 @@ export default defineConfig({
       {
         text: '碎片',
         items: [
+          { text: 'Sudoku Development Log', link: '/sudoku-development-log' },
           { text: '告别 oh-my-zsh 启动卡顿', link: '/ohmyzsh-starship-zinit' },
           { text: 'Clash Party TUN on macOS', link: '/clash-party-tun-macos' },
           { text: 'Cloudflare Workers 超时排障', link: '/cloudflare-workers-timeout-tracing' },
-          { text: 'Sudoku Development Log', link: '/sudoku-development-log' },
+          { text: 'openclaw-gateway-startup-oom-troubleshooting', link: '/openclaw-gateway-startup-oom-troubleshooting' },
         ]
       },
       {

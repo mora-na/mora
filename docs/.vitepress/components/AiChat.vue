@@ -10,12 +10,17 @@ const STREAM_REQUEST_TIMEOUT_MS = 90_000
 const TERMINAL_EVENT_NAMES = new Set([
   'done',
   'end',
-  'finish',
-  'finished',
-  'complete',
-  'completed',
   'stop',
   'message_end',
+  'message_stop',
+])
+const TERMINAL_EVENT_PAYLOADS = new Set([
+  '[done]',
+  'done',
+  'end',
+  'stop',
+  'message_end',
+  'message_stop',
 ])
 
 const suggestions = [
@@ -117,6 +122,10 @@ function clearRequestTimeout() {
     clearTimeout(requestTimeoutId)
     requestTimeoutId = null
   }
+}
+
+function normalizeStreamToken(value) {
+  return typeof value === 'string' ? value.trim().toLowerCase() : ''
 }
 
 function finishTypingSession() {
@@ -262,7 +271,11 @@ function extractTextFromPayload(payload) {
   if (!payload) return null
 
   const normalizedPayload = payload.trim()
-  if (!normalizedPayload || normalizedPayload === '[DONE]' || normalizedPayload === '[done]') return null
+  if (!normalizedPayload) return null
+
+  if (TERMINAL_EVENT_PAYLOADS.has(normalizeStreamToken(normalizedPayload))) {
+    return null
+  }
 
   try {
     const json = JSON.parse(normalizedPayload)
@@ -273,6 +286,16 @@ function extractTextFromPayload(payload) {
     if (typeof json.text === 'string') return json.text
     if (typeof json.content === 'string') return json.content
     if (typeof json.message === 'string') return json.message
+
+    const firstChoice = Array.isArray(json.choices) ? json.choices[0] : null
+    if (firstChoice?.delta) {
+      if (typeof firstChoice.delta.content === 'string') return firstChoice.delta.content
+      if (typeof firstChoice.delta.text === 'string') return firstChoice.delta.text
+    }
+    if (firstChoice?.message) {
+      if (typeof firstChoice.message.content === 'string') return firstChoice.message.content
+      if (typeof firstChoice.message.text === 'string') return firstChoice.message.text
+    }
 
     if (json.type === 'answer' && json.content) {
       if (typeof json.content.answer === 'string') return json.content.answer
@@ -293,7 +316,7 @@ function extractTextFromPayload(payload) {
 function isTerminalStreamEvent(event) {
   if (!event) return false
 
-  const eventName = typeof event.event === 'string' ? event.event.trim().toLowerCase() : ''
+  const eventName = normalizeStreamToken(event.event)
   if (eventName && TERMINAL_EVENT_NAMES.has(eventName)) {
     return true
   }
@@ -301,7 +324,7 @@ function isTerminalStreamEvent(event) {
   const payload = typeof event.payload === 'string' ? event.payload.trim() : ''
   if (!payload) return false
 
-  if (payload === '[DONE]' || payload === '[done]') {
+  if (TERMINAL_EVENT_PAYLOADS.has(normalizeStreamToken(payload))) {
     return true
   }
 
@@ -309,8 +332,8 @@ function isTerminalStreamEvent(event) {
     const json = JSON.parse(payload)
 
     if (typeof json === 'string') {
-      const normalized = json.trim().toLowerCase()
-      return normalized === '[done]' || TERMINAL_EVENT_NAMES.has(normalized)
+      const normalized = normalizeStreamToken(json)
+      return TERMINAL_EVENT_PAYLOADS.has(normalized) || TERMINAL_EVENT_NAMES.has(normalized)
     }
 
     if (!json || typeof json !== 'object') {
@@ -331,26 +354,30 @@ function isTerminalStreamEvent(event) {
       return true
     }
 
-    if (typeof json.type === 'string' && TERMINAL_EVENT_NAMES.has(json.type.trim().toLowerCase())) {
+    const jsonType = normalizeStreamToken(json.type)
+    if (jsonType && TERMINAL_EVENT_NAMES.has(jsonType)) {
       return true
     }
 
-    if (typeof json.event === 'string' && TERMINAL_EVENT_NAMES.has(json.event.trim().toLowerCase())) {
+    const jsonEvent = normalizeStreamToken(json.event)
+    if (jsonEvent && TERMINAL_EVENT_NAMES.has(jsonEvent)) {
       return true
     }
 
     if (
-      typeof json.type === 'string' &&
-      json.type.trim().toLowerCase() === 'message_end'
+      jsonType === 'message_end' ||
+      jsonType === 'message_stop' ||
+      jsonEvent === 'message_end' ||
+      jsonEvent === 'message_stop'
     ) {
       return true
     }
 
-    if (json.finish_reason) {
+    if (json.finish_reason != null && json.finish_reason !== '') {
       return true
     }
 
-    return Array.isArray(json.choices) && json.choices.some((choice) => choice?.finish_reason)
+    return Array.isArray(json.choices) && json.choices.some((choice) => choice?.finish_reason != null && choice.finish_reason !== '')
   } catch {
     return false
   }

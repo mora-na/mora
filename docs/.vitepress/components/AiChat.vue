@@ -27,41 +27,51 @@ function scrollToBottom() {
 }
 
 /**
- * 解析 SSE 流式响应
- * 格式：
+ * 解析 SSE 事件，提取 data 中的 JSON
+ * SSE 格式：
  *   event: message
- *   data: {"type": "answer", "content": {"answer": "xxx"}, ...}
+ *   data: {"type": "answer", "content": {"answer": "xxx"}}
+ *   (空行分隔)
  */
-function parseSSE(text) {
-  const events = []
-  const lines = text.split('\n')
-  let currentEvent = null
+function parseSSEEvents(buffer) {
+  const results = []
+  // 按双换行分割完整事件
+  const eventBlocks = buffer.split(/\n\n+/)
 
-  for (const line of lines) {
-    if (line.startsWith('event:')) {
-      if (currentEvent) events.push(currentEvent)
-      currentEvent = { event: line.slice(6).trim(), data: '' }
-    } else if (line.startsWith('data:')) {
-      if (currentEvent) {
-        currentEvent.data = line.slice(5).trim()
+  for (const block of eventBlocks) {
+    if (!block.trim()) continue
+
+    const lines = block.split('\n')
+    let eventData = null
+
+    for (const line of lines) {
+      if (line.startsWith('data:')) {
+        eventData = line.slice(5).trim()
       }
-    } else if (line.trim() === '' && currentEvent) {
-      events.push(currentEvent)
-      currentEvent = null
+    }
+
+    if (eventData) {
+      results.push(eventData)
     }
   }
-  if (currentEvent) events.push(currentEvent)
-  return events
+
+  return results
 }
 
 /**
- * 处理 SSE 事件，提取 answer 内容
+ * 从 SSE data JSON 中提取 answer 内容
  */
-function extractAnswer(json) {
-  if (json.type === 'answer' && json.content?.answer) {
-    return json.content.answer
+function extractAnswerFromJSON(jsonStr) {
+  try {
+    const json = JSON.parse(jsonStr)
+    // 只处理 type === 'answer' 且有 answer 内容的事件
+    if (json.type === 'answer' && json.content?.answer) {
+      return json.content.answer
+    }
+    return null
+  } catch {
+    return null
   }
-  return null
 }
 
 async function sendMessage() {
@@ -104,49 +114,33 @@ async function sendMessage() {
 
       buffer += decoder.decode(value, { stream: true })
 
-      // 解析 SSE 事件
-      const events = parseSSE(buffer)
+      // 查找最后一个完整事件（以 \n\n 结尾）
+      const lastEventEnd = buffer.lastIndexOf('\n\n')
+      if (lastEventEnd === -1) continue
 
-      // 保留最后一个未完成的事件（可能数据不完整）
-      const lastNewline = buffer.lastIndexOf('\n\n')
-      if (lastNewline >= 0) {
-        buffer = buffer.slice(lastNewline + 2)
-      }
+      // 提取可处理的部分
+      const processable = buffer.slice(0, lastEventEnd)
+      buffer = buffer.slice(lastEventEnd + 2)
 
-      for (const event of events) {
-        if (event.event === 'message' && event.data) {
-          try {
-            const json = JSON.parse(event.data)
-            const answer = extractAnswer(json)
-            if (answer) {
-              assistantMsg.content += answer
-              scrollToBottom()
-            }
-            // 处理错误
-            if (json.type === 'error' || json.content?.error) {
-              assistantMsg.content = json.content?.error || '发生错误'
-            }
-          } catch {
-            // JSON 解析失败，忽略
-          }
+      // 解析事件
+      const dataStrings = parseSSEEvents(processable)
+
+      for (const dataStr of dataStrings) {
+        const answer = extractAnswerFromJSON(dataStr)
+        if (answer) {
+          assistantMsg.content += answer
+          scrollToBottom()
         }
       }
     }
 
     // 处理剩余 buffer
     if (buffer.trim()) {
-      const events = parseSSE(buffer)
-      for (const event of events) {
-        if (event.event === 'message' && event.data) {
-          try {
-            const json = JSON.parse(event.data)
-            const answer = extractAnswer(json)
-            if (answer) {
-              assistantMsg.content += answer
-            }
-          } catch {
-            // ignore
-          }
+      const dataStrings = parseSSEEvents(buffer)
+      for (const dataStr of dataStrings) {
+        const answer = extractAnswerFromJSON(dataStr)
+        if (answer) {
+          assistantMsg.content += answer
         }
       }
     }

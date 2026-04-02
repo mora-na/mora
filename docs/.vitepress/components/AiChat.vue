@@ -2,9 +2,10 @@
 import {computed, nextTick, onMounted, onUnmounted, reactive, ref} from 'vue'
 
 /* global __AI_STREAM_URL__ */
-const STREAM_URL = __AI_STREAM_URL__
+const WORKER_BASE_URL = normalizeWorkerBaseUrl(__AI_STREAM_URL__)
+const STREAM_URL = buildWorkerEndpoint(WORKER_BASE_URL, '/stream_run')
+const AUTH_URL = buildWorkerEndpoint(WORKER_BASE_URL, '/auth/token')
 
-const AUTH_ROUTE_PATH = '/auth/token'
 const AUTH_QUESTION = '我是谁？'
 const AUTH_REQUIRED_MESSAGE = '认证已失效，请重新回答验证问题。'
 const greeting = '验证通过，你可以开始提问。'
@@ -167,6 +168,23 @@ function createSessionId() {
   }
 
   return `session-${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+function normalizeWorkerBaseUrl(url) {
+  if (typeof url !== 'string') return ''
+  return url.trim().replace(/\/+$/, '')
+}
+
+function buildWorkerEndpoint(baseUrl, path) {
+  const normalizedPath = typeof path === 'string' && path.startsWith('/')
+    ? path
+    : `/${path || ''}`
+
+  if (!baseUrl) {
+    return normalizedPath
+  }
+
+  return `${baseUrl}${normalizedPath}`
 }
 
 function loadSessionId() {
@@ -665,40 +683,6 @@ function createAssistantMessage() {
   })
 }
 
-function normalizePathname(pathname) {
-  if (!pathname) return '/'
-  return pathname.startsWith('/') ? pathname : `/${pathname}`
-}
-
-function resolveAuthTokenUrl(streamUrl) {
-  if (!streamUrl) {
-    return AUTH_ROUTE_PATH
-  }
-
-  const fallbackOrigin = typeof window !== 'undefined'
-    ? window.location.origin
-    : 'http://localhost'
-
-  try {
-    const parsed = new URL(streamUrl, fallbackOrigin)
-    const streamPath = normalizePathname(parsed.pathname)
-    let basePath = streamPath
-
-    if (streamPath.endsWith('/stream_run')) {
-      basePath = streamPath.slice(0, -'/stream_run'.length) || '/'
-    }
-
-    const normalizedBasePath = basePath.replace(/\/+$/, '')
-    parsed.pathname = normalizedBasePath
-      ? `${normalizedBasePath}${AUTH_ROUTE_PATH}`.replace(/\/{2,}/g, '/')
-      : AUTH_ROUTE_PATH
-    parsed.search = ''
-    return parsed.toString()
-  } catch {
-    return AUTH_ROUTE_PATH
-  }
-}
-
 async function parseJsonResponse(response) {
   try {
     return await response.json()
@@ -737,7 +721,7 @@ async function submitAuthAnswer(answerText) {
   scrollToBottom()
 
   try {
-    const response = await fetch(resolveAuthTokenUrl(STREAM_URL), {
+    const response = await fetch(AUTH_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

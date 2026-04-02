@@ -7,21 +7,8 @@ const BEARER_TOKEN = __AI_BEARER_TOKEN__
 
 const greeting = '你好！我是 mora 的 AI 分身，可以直接问我任何问题。'
 const STREAM_REQUEST_TIMEOUT_MS = 90_000
-const TERMINAL_EVENT_NAMES = new Set([
-  'done',
-  'end',
-  'stop',
-  'message_end',
-  'message_stop',
-])
-const TERMINAL_EVENT_PAYLOADS = new Set([
-  '[done]',
-  'done',
-  'end',
-  'stop',
-  'message_end',
-  'message_stop',
-])
+const AI_SESSION_STORAGE_KEY = 'mora-ai-session-id'
+const AI_RUN_ID_HEADER = 'X-Run-Id'
 
 const suggestions = [
   '介绍一下你的技术栈'
@@ -47,6 +34,7 @@ let lastIncomingText = ''
 let requestTimeoutId = null
 let timedOutRequestId = null
 let currentRequestId = 0
+let chatSessionId = createSessionId()
 
 const AI_CHAT_TOP_OFFSET_VAR = '--ai-chat-top-offset'
 
@@ -126,6 +114,45 @@ function clearRequestTimeout() {
 
 function normalizeStreamToken(value) {
   return typeof value === 'string' ? value.trim().toLowerCase() : ''
+}
+
+function createSessionId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+
+  return `session-${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+function loadSessionId() {
+  if (typeof window === 'undefined') {
+    return createSessionId()
+  }
+
+  try {
+    const stored = window.sessionStorage.getItem(AI_SESSION_STORAGE_KEY)
+    return stored && stored.trim() ? stored : createSessionId()
+  } catch {
+    return createSessionId()
+  }
+}
+
+function syncSessionId(nextSessionId) {
+  chatSessionId = nextSessionId
+
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  try {
+    window.sessionStorage.setItem(AI_SESSION_STORAGE_KEY, nextSessionId)
+  } catch {
+    // sessionStorage 不可用时仅保留内存态会话 ID
+  }
+}
+
+function resetChatSessionId() {
+  syncSessionId(createSessionId())
 }
 
 function finishTypingSession() {
@@ -267,120 +294,81 @@ function parseSSEEvents(buffer) {
   return results
 }
 
-function extractTextFromPayload(payload) {
+function parseStreamPayload(payload) {
   if (!payload) return null
 
   const normalizedPayload = payload.trim()
   if (!normalizedPayload) return null
 
-  if (TERMINAL_EVENT_PAYLOADS.has(normalizeStreamToken(normalizedPayload))) {
-    return null
+  if (normalizedPayload === '[DONE]' || normalizedPayload === '[done]') {
+    return { type: 'done' }
   }
 
   try {
-    const json = JSON.parse(normalizedPayload)
-
-    if (typeof json === 'string') return json
-    if (typeof json.answer === 'string') return json.answer
-    if (typeof json.delta === 'string') return json.delta
-    if (typeof json.text === 'string') return json.text
-    if (typeof json.content === 'string') return json.content
-    if (typeof json.message === 'string') return json.message
-
-    const firstChoice = Array.isArray(json.choices) ? json.choices[0] : null
-    if (firstChoice?.delta) {
-      if (typeof firstChoice.delta.content === 'string') return firstChoice.delta.content
-      if (typeof firstChoice.delta.text === 'string') return firstChoice.delta.text
-    }
-    if (firstChoice?.message) {
-      if (typeof firstChoice.message.content === 'string') return firstChoice.message.content
-      if (typeof firstChoice.message.text === 'string') return firstChoice.message.text
-    }
-
-    if (json.type === 'answer' && json.content) {
-      if (typeof json.content.answer === 'string') return json.content.answer
-      if (typeof json.content.delta === 'string') return json.content.delta
-      if (typeof json.content.text === 'string') return json.content.text
-    }
-
-    if (json.type === 'message' && typeof json.content === 'string') {
-      return json.content
-    }
-
-    return null
+    return JSON.parse(normalizedPayload)
   } catch {
     return normalizedPayload
   }
 }
 
-function isTerminalStreamEvent(event) {
-  if (!event) return false
-
-  const eventName = normalizeStreamToken(event.event)
-  if (eventName && TERMINAL_EVENT_NAMES.has(eventName)) {
-    return true
+function getStreamEventType(event, data) {
+  if (data && typeof data === 'object' && typeof data.type === 'string') {
+    return normalizeStreamToken(data.type)
   }
 
-  const payload = typeof event.payload === 'string' ? event.payload.trim() : ''
-  if (!payload) return false
-
-  if (TERMINAL_EVENT_PAYLOADS.has(normalizeStreamToken(payload))) {
-    return true
+  const eventType = normalizeStreamToken(event?.event)
+  if (eventType && eventType !== 'message') {
+    return eventType
   }
 
-  try {
-    const json = JSON.parse(payload)
-
-    if (typeof json === 'string') {
-      const normalized = normalizeStreamToken(json)
-      return TERMINAL_EVENT_PAYLOADS.has(normalized) || TERMINAL_EVENT_NAMES.has(normalized)
-    }
-
-    if (!json || typeof json !== 'object') {
-      return false
-    }
-
-    if (
-      json.done === true ||
-      json.finish === true ||
-      json.isDone === true ||
-      json.is_end === true ||
-      json.ended === true ||
-      json.finished === true ||
-      json.complete === true ||
-      json.completed === true ||
-      json.stop === true
-    ) {
-      return true
-    }
-
-    const jsonType = normalizeStreamToken(json.type)
-    if (jsonType && TERMINAL_EVENT_NAMES.has(jsonType)) {
-      return true
-    }
-
-    const jsonEvent = normalizeStreamToken(json.event)
-    if (jsonEvent && TERMINAL_EVENT_NAMES.has(jsonEvent)) {
-      return true
-    }
-
-    if (
-      jsonType === 'message_end' ||
-      jsonType === 'message_stop' ||
-      jsonEvent === 'message_end' ||
-      jsonEvent === 'message_stop'
-    ) {
-      return true
-    }
-
-    if (json.finish_reason != null && json.finish_reason !== '') {
-      return true
-    }
-
-    return Array.isArray(json.choices) && json.choices.some((choice) => choice?.finish_reason != null && choice.finish_reason !== '')
-  } catch {
-    return false
+  if (typeof data === 'string') {
+    return 'content_chunk'
   }
+
+  return ''
+}
+
+function extractStreamText(data) {
+  if (typeof data === 'string') return data
+  if (!data || typeof data !== 'object') return null
+
+  if (typeof data.content === 'string') return data.content
+  if (typeof data.delta === 'string') return data.delta
+  if (typeof data.text === 'string') return data.text
+  if (typeof data.message === 'string') return data.message
+
+  if (data.content && typeof data.content === 'object') {
+    if (typeof data.content.text === 'string') return data.content.text
+    if (typeof data.content.content === 'string') return data.content.content
+    if (typeof data.content.answer === 'string') return data.content.answer
+    if (typeof data.content.delta === 'string') return data.content.delta
+  }
+
+  const firstChoice = Array.isArray(data.choices) ? data.choices[0] : null
+  if (firstChoice?.delta) {
+    if (typeof firstChoice.delta.content === 'string') return firstChoice.delta.content
+    if (typeof firstChoice.delta.text === 'string') return firstChoice.delta.text
+  }
+  if (firstChoice?.message) {
+    if (typeof firstChoice.message.content === 'string') return firstChoice.message.content
+    if (typeof firstChoice.message.text === 'string') return firstChoice.message.text
+  }
+
+  if (typeof data.answer === 'string') return data.answer
+
+  return null
+}
+
+function extractStreamErrorMessage(data) {
+  if (typeof data === 'string') return data
+  if (!data || typeof data !== 'object') return null
+
+  if (typeof data.content === 'string') return data.content
+  if (typeof data.message === 'string') return data.message
+  if (typeof data.error === 'string') return data.error
+  if (data.error && typeof data.error.message === 'string') return data.error.message
+
+  return null
 }
 
 function armRequestTimeout(requestId, controller) {
@@ -441,6 +429,9 @@ async function sendMessage(questionText) {
     if (requestId !== currentRequestId) return
 
     clearRequestTimeout()
+    if (!controller.signal.aborted) {
+      controller.abort()
+    }
     flushTypingBuffer()
     resetTypingState()
     assistantMsg.content = assistantMsg.content
@@ -453,16 +444,35 @@ async function sendMessage(questionText) {
   }
 
   try {
+    const runId = createSessionId()
+    const requestPayload = {
+      type: 'query',
+      session_id: chatSessionId,
+      content: {
+        query: {
+          prompt: [
+            {
+              type: 'text',
+              content: {
+                text,
+              },
+            },
+          ],
+        },
+      },
+    }
+
     const headers = {
       'Content-Type': 'application/json',
-      Accept: 'text/event-stream, application/json;q=0.9, text/plain;q=0.8',
+      Accept: 'text/event-stream',
+      [AI_RUN_ID_HEADER]: runId,
     }
     if (BEARER_TOKEN) headers.Authorization = `Bearer ${BEARER_TOKEN}`
 
     const response = await fetch(STREAM_URL, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ message: text }),
+      body: JSON.stringify(requestPayload),
       signal: controller.signal,
     })
 
@@ -479,7 +489,36 @@ async function sendMessage(questionText) {
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
-    let streamEndedBySignal = false
+
+    const processStreamEvent = (event) => {
+      const data = parseStreamPayload(event.payload)
+      const eventType = getStreamEventType(event, data)
+
+      if (eventType === 'error') {
+        failRequest(extractStreamErrorMessage(data) || '请求失败。')
+        return false
+      }
+
+      if (eventType === 'status') {
+        const status = normalizeStreamToken(data?.status)
+        if (status === 'cancelled') {
+          failRequest(extractStreamErrorMessage(data) || '请求已取消。')
+          return false
+        }
+        return true
+      }
+
+      if (eventType === 'done' || eventType === 'tool_call' || eventType === 'tool_result') {
+        return true
+      }
+
+      const textChunk = extractStreamText(data)
+      if (textChunk) {
+        appendIncomingText(textChunk)
+      }
+
+      return true
+    }
 
     while (true) {
       const { done, value } = await reader.read()
@@ -498,20 +537,9 @@ async function sendMessage(questionText) {
       buffer = buffer.slice(lastEventEnd + 2)
 
       for (const event of parseSSEEvents(processable)) {
-        const textChunk = extractTextFromPayload(event.payload)
-        if (textChunk) {
-          appendIncomingText(textChunk)
+        if (!processStreamEvent(event)) {
+          return
         }
-
-        if (isTerminalStreamEvent(event)) {
-          streamEndedBySignal = true
-          break
-        }
-      }
-
-      if (streamEndedBySignal) {
-        clearRequestTimeout()
-        break
       }
     }
 
@@ -520,24 +548,9 @@ async function sendMessage(questionText) {
 
     if (buffer.trim()) {
       for (const event of parseSSEEvents(buffer)) {
-        const textChunk = extractTextFromPayload(event.payload)
-        if (textChunk) {
-          appendIncomingText(textChunk)
+        if (!processStreamEvent(event)) {
+          return
         }
-
-        if (isTerminalStreamEvent(event)) {
-          streamEndedBySignal = true
-          clearRequestTimeout()
-          break
-        }
-      }
-    }
-
-    if (streamEndedBySignal) {
-      try {
-        await reader.cancel()
-      } catch {
-        // 忽略取消流时的二次错误
       }
     }
 
@@ -591,6 +604,7 @@ function clearChat() {
   }
 
   resetTypingState()
+  resetChatSessionId()
   loading.value = false
   messages.value = [
     createGreetingMessage(),
@@ -599,6 +613,7 @@ function clearChat() {
 }
 
 onMounted(() => {
+  syncSessionId(loadSessionId())
   setAiChatPageLocked(true)
   refreshAiChatTopOffset()
   resizeListener = () => refreshAiChatTopOffset()

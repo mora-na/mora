@@ -1,14 +1,18 @@
 <script setup>
-import {nextTick, onMounted, onUnmounted, reactive, ref} from 'vue'
+import {computed, nextTick, onMounted, onUnmounted, reactive, ref} from 'vue'
 
-/* global __AI_STREAM_URL__, __AI_BEARER_TOKEN__ */
+/* global __AI_STREAM_URL__ */
 const STREAM_URL = __AI_STREAM_URL__
-const BEARER_TOKEN = __AI_BEARER_TOKEN__
 
-const greeting = '你好！我是 mora 的 AI 分身，可以直接问我任何问题。'
+const AUTH_ROUTE_PATH = '/auth/token'
+const AUTH_QUESTION = '我是谁？'
+const AUTH_REQUIRED_MESSAGE = '认证已失效，请重新回答验证问题。'
+const greeting = '验证通过，你可以开始提问。'
 const STREAM_REQUEST_TIMEOUT_MS = 90_000
 const AI_SESSION_STORAGE_KEY = 'mora-ai-session-id'
 const AI_CHAT_HISTORY_STORAGE_KEY = 'mora-ai-chat-history'
+const AI_AUTH_TOKEN_STORAGE_KEY = 'mora-ai-token'
+const AI_AUTH_EXPIRES_STORAGE_KEY = 'mora-ai-token-expires-at'
 const AI_RUN_ID_HEADER = 'X-Run-Id'
 const TERMINAL_STREAM_EVENT_TYPES = new Set([
   'done',
@@ -21,11 +25,14 @@ const suggestions = [
 ]
 
 const messages = ref([
-  createGreetingMessage(),
+  createAuthChallengeMessage(),
 ])
 
 const inputText = ref('')
 const loading = ref(false)
+const authVerifying = ref(false)
+const authToken = ref('')
+const authExpiresAt = ref(0)
 const messagesContainer = ref(null)
 const inputRef = ref(null)
 let idCounter = 1
@@ -51,6 +58,38 @@ function createGreetingMessage() {
     id: 0,
   }
 }
+
+function createAuthChallengeMessage(reason = '') {
+  const content = reason
+    ? `${reason}\n\n${AUTH_QUESTION}`
+    : AUTH_QUESTION
+
+  return {
+    role: 'assistant',
+    content,
+    id: 0,
+  }
+}
+
+function hasValidAuthToken() {
+  return Boolean(authToken.value) && authExpiresAt.value > Date.now()
+}
+
+const isAuthenticated = computed(() => hasValidAuthToken())
+
+const statusLabel = computed(() => {
+  if (authVerifying.value) return '验证中'
+  if (loading.value) return '生成中'
+  return isAuthenticated.value ? '在线' : '待验证'
+})
+
+const composerPlaceholder = computed(() => (
+  isAuthenticated.value ? '提出你的问题' : '请输入答案'
+))
+
+const showSuggestions = computed(() => (
+  isAuthenticated.value && messages.value.length === 1 && !loading.value && !authVerifying.value
+))
 
 function setAiChatPageLocked(locked) {
   if (typeof document === 'undefined') return
@@ -143,6 +182,85 @@ function loadSessionId() {
   }
 }
 
+function clearAuthSessionStorage() {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  try {
+    window.sessionStorage.removeItem(AI_AUTH_TOKEN_STORAGE_KEY)
+    window.sessionStorage.removeItem(AI_AUTH_EXPIRES_STORAGE_KEY)
+  } catch {
+    // sessionStorage 不可用时忽略
+  }
+}
+
+function persistAuthSession() {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  try {
+    if (!hasValidAuthToken()) {
+      window.sessionStorage.removeItem(AI_AUTH_TOKEN_STORAGE_KEY)
+      window.sessionStorage.removeItem(AI_AUTH_EXPIRES_STORAGE_KEY)
+      return
+    }
+
+    window.sessionStorage.setItem(AI_AUTH_TOKEN_STORAGE_KEY, authToken.value)
+    window.sessionStorage.setItem(AI_AUTH_EXPIRES_STORAGE_KEY, String(authExpiresAt.value))
+  } catch {
+    // sessionStorage 不可用时忽略
+  }
+}
+
+function setAuthSession(token, expiresInSeconds) {
+  authToken.value = token
+  authExpiresAt.value = Date.now() + Math.floor(expiresInSeconds * 1000)
+  persistAuthSession()
+}
+
+function clearAuthSession() {
+  authToken.value = ''
+  authExpiresAt.value = 0
+  clearAuthSessionStorage()
+}
+
+function restoreAuthSession() {
+  if (typeof window === 'undefined') {
+    return false
+  }
+
+  try {
+    const storedToken = window.sessionStorage.getItem(AI_AUTH_TOKEN_STORAGE_KEY) || ''
+    const storedExpiresAt = Number(window.sessionStorage.getItem(AI_AUTH_EXPIRES_STORAGE_KEY) || 0)
+
+    if (!storedToken || !Number.isFinite(storedExpiresAt) || storedExpiresAt <= Date.now()) {
+      clearAuthSession()
+      return false
+    }
+
+    authToken.value = storedToken
+    authExpiresAt.value = storedExpiresAt
+    return true
+  } catch {
+    clearAuthSession()
+    return false
+  }
+}
+
+function clearChatHistoryStorage() {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  try {
+    window.sessionStorage.removeItem(AI_CHAT_HISTORY_STORAGE_KEY)
+  } catch {
+    // sessionStorage 不可用时忽略
+  }
+}
+
 function syncSessionId(nextSessionId) {
   chatSessionId = nextSessionId
 
@@ -199,7 +317,7 @@ function getPersistableMessages() {
 }
 
 function persistChatHistory() {
-  if (typeof window === 'undefined') {
+  if (typeof window === 'undefined' || !hasValidAuthToken()) {
     return
   }
 
@@ -273,11 +391,37 @@ function restoreChatHistory() {
 
     idCounter = restoredMessages.reduce((maxId, message) => Math.max(maxId, message.id), -1) + 1
   } else {
+    messages.value = [
+      createGreetingMessage(),
+    ]
     idCounter = 1
   }
 
   loading.value = false
   persistChatHistory()
+}
+
+function resetToAuthChallenge(reason = '') {
+  currentRequestId += 1
+  timedOutRequestId = null
+  clearRequestTimeout()
+
+  if (activeController) {
+    activeController.abort()
+    activeController = null
+  }
+
+  resetTypingState()
+  clearAuthSession()
+  clearChatHistoryStorage()
+  resetChatSessionId()
+  loading.value = false
+  authVerifying.value = false
+  messages.value = [
+    createAuthChallengeMessage(reason),
+  ]
+  idCounter = 1
+  scrollToBottom()
 }
 
 function finishTypingSession() {
@@ -521,9 +665,135 @@ function createAssistantMessage() {
   })
 }
 
+function normalizePathname(pathname) {
+  if (!pathname) return '/'
+  return pathname.startsWith('/') ? pathname : `/${pathname}`
+}
+
+function resolveAuthTokenUrl(streamUrl) {
+  if (!streamUrl) {
+    return AUTH_ROUTE_PATH
+  }
+
+  const fallbackOrigin = typeof window !== 'undefined'
+    ? window.location.origin
+    : 'http://localhost'
+
+  try {
+    const parsed = new URL(streamUrl, fallbackOrigin)
+    const streamPath = normalizePathname(parsed.pathname)
+    let basePath = streamPath
+
+    if (streamPath.endsWith('/stream_run')) {
+      basePath = streamPath.slice(0, -'/stream_run'.length) || '/'
+    }
+
+    const normalizedBasePath = basePath.replace(/\/+$/, '')
+    parsed.pathname = normalizedBasePath
+      ? `${normalizedBasePath}${AUTH_ROUTE_PATH}`.replace(/\/{2,}/g, '/')
+      : AUTH_ROUTE_PATH
+    parsed.search = ''
+    return parsed.toString()
+  } catch {
+    return AUTH_ROUTE_PATH
+  }
+}
+
+async function parseJsonResponse(response) {
+  try {
+    return await response.json()
+  } catch {
+    return null
+  }
+}
+
+function extractApiErrorMessage(data) {
+  if (!data || typeof data !== 'object') return null
+  if (typeof data.error === 'string' && data.error.trim()) return data.error
+  if (typeof data.message === 'string' && data.message.trim()) return data.message
+  if (typeof data.code === 'string' && data.code.trim()) return data.code
+  return null
+}
+
+async function submitAuthAnswer(answerText) {
+  const answer = typeof answerText === 'string' ? answerText.trim() : ''
+  if (!answer || authVerifying.value || loading.value) {
+    return
+  }
+
+  const userMessage = { role: 'user', content: answer, id: idCounter++ }
+  const assistantMsg = reactive({
+    role: 'assistant',
+    content: '验证中...',
+    id: idCounter++,
+    streaming: true,
+  })
+
+  messages.value.push(userMessage)
+  messages.value.push(assistantMsg)
+  inputText.value = ''
+  authVerifying.value = true
+  loading.value = true
+  scrollToBottom()
+
+  try {
+    const response = await fetch(resolveAuthTokenUrl(STREAM_URL), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({ answer }),
+    })
+
+    const payload = await parseJsonResponse(response)
+
+    if (!response.ok) {
+      const reason = extractApiErrorMessage(payload) || `认证失败：${response.status}`
+      const retryAfter = Number(payload?.retryAfter)
+      assistantMsg.content = response.status === 429 && Number.isFinite(retryAfter) && retryAfter > 0
+        ? `${reason}，请 ${retryAfter} 秒后重试。`
+        : reason
+      assistantMsg.streaming = false
+      return
+    }
+
+    const token = typeof payload?.token === 'string' ? payload.token.trim() : ''
+    const expiresIn = Number(payload?.expiresIn)
+    if (!token || !Number.isFinite(expiresIn) || expiresIn <= 0) {
+      assistantMsg.content = '认证响应无效，请稍后重试。'
+      assistantMsg.streaming = false
+      return
+    }
+
+    setAuthSession(token, expiresIn)
+    resetChatSessionId()
+    messages.value = [
+      createGreetingMessage(),
+    ]
+    idCounter = 1
+    loading.value = false
+    authVerifying.value = false
+    persistChatHistory()
+    scrollToBottom()
+  } catch (err) {
+    assistantMsg.content = `网络错误：${err?.message || '请求失败'}`
+    assistantMsg.streaming = false
+  } finally {
+    authVerifying.value = false
+    loading.value = false
+    scrollToBottom()
+  }
+}
+
 async function sendMessage(questionText) {
   const text = typeof questionText === 'string' ? questionText.trim() : ''
   if (!text) return
+
+  if (!hasValidAuthToken()) {
+    resetToAuthChallenge(AUTH_REQUIRED_MESSAGE)
+    return
+  }
 
   if (activeController) {
     currentRequestId += 1
@@ -598,7 +868,7 @@ async function sendMessage(questionText) {
       Accept: 'text/event-stream',
       [AI_RUN_ID_HEADER]: runId,
     }
-    if (BEARER_TOKEN) headers.Authorization = `Bearer ${BEARER_TOKEN}`
+    headers.Authorization = `Bearer ${authToken.value}`
 
     const response = await fetch(STREAM_URL, {
       method: 'POST',
@@ -608,6 +878,10 @@ async function sendMessage(questionText) {
     })
 
     if (!response.ok) {
+      if (response.status === 401) {
+        resetToAuthChallenge(AUTH_REQUIRED_MESSAGE)
+        return
+      }
       failRequest(`请求失败：${response.status} ${response.statusText}`)
       return
     }
@@ -740,10 +1014,18 @@ function handleInput(event) {
 }
 
 function submitComposerMessage() {
+  if (loading.value || authVerifying.value) return
+
+  if (!hasValidAuthToken()) {
+    submitAuthAnswer(inputText.value)
+    return
+  }
+
   sendMessage(inputText.value)
 }
 
 function useSuggestion(text) {
+  if (!hasValidAuthToken()) return
   sendMessage(text)
 }
 
@@ -758,12 +1040,24 @@ function clearChat() {
   }
 
   resetTypingState()
-  resetChatSessionId()
   loading.value = false
-  messages.value = [
-    createGreetingMessage(),
-  ]
-  persistChatHistory()
+  authVerifying.value = false
+
+  if (hasValidAuthToken()) {
+    resetChatSessionId()
+    messages.value = [
+      createGreetingMessage(),
+    ]
+    persistChatHistory()
+  } else {
+    clearAuthSession()
+    clearChatHistoryStorage()
+    messages.value = [
+      createAuthChallengeMessage(),
+    ]
+    idCounter = 1
+  }
+
   scrollToBottom()
 }
 
@@ -771,7 +1065,16 @@ onMounted(() => {
   syncSessionId(loadSessionId())
   setAiChatPageLocked(true)
   refreshAiChatTopOffset()
-  restoreChatHistory()
+  const authed = restoreAuthSession()
+  if (authed) {
+    restoreChatHistory()
+  } else {
+    clearChatHistoryStorage()
+    messages.value = [
+      createAuthChallengeMessage(),
+    ]
+    idCounter = 1
+  }
   resizeListener = () => refreshAiChatTopOffset()
   window.addEventListener('resize', resizeListener)
   inputRef.value?.focus()
@@ -811,16 +1114,16 @@ onUnmounted(() => {
         </div>
 
         <div class="chatgpt__actions">
-          <span class="chatgpt__status" :class="{ 'is-loading': loading }">
+          <span class="chatgpt__status" :class="{ 'is-loading': loading || authVerifying }">
             <span class="chatgpt__status-dot"></span>
-            {{ loading ? '生成中' : '在线' }}
+            {{ statusLabel }}
           </span>
           <button type="button" class="chatgpt__ghost-btn" @click="clearChat">清空</button>
         </div>
       </header>
 
       <main class="chatgpt__body">
-        <div class="chatgpt__intro" v-if="messages.length === 1 && !loading">
+        <div class="chatgpt__intro" v-if="showSuggestions">
           <div class="chatgpt__chips">
             <button
               v-for="suggestion in suggestions"
@@ -868,7 +1171,7 @@ onUnmounted(() => {
               ref="inputRef"
               :value="inputText"
               class="chatgpt__input"
-              placeholder="提出你的问题"
+              :placeholder="composerPlaceholder"
               rows="1"
               @input="handleInput"
               @keydown="handleKeydown"
@@ -877,7 +1180,7 @@ onUnmounted(() => {
             <button
               type="button"
               class="chatgpt__send-btn"
-              :disabled="!inputText.trim()"
+              :disabled="!inputText.trim() || loading || authVerifying"
               @click="submitComposerMessage"
               title="发送"
             >

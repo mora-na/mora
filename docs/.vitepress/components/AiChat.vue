@@ -1,5 +1,5 @@
 <script setup>
-import {nextTick, onMounted, onUnmounted, ref} from 'vue'
+import {nextTick, onMounted, onUnmounted, reactive, ref} from 'vue'
 
 /* global __AI_STREAM_URL__, __AI_BEARER_TOKEN__ */
 const STREAM_URL = __AI_STREAM_URL__
@@ -35,20 +35,25 @@ function scrollToBottom() {
  * 启动打字机效果
  */
 function startTypewriter(msg) {
+  if (typewriterTimer) {
+    clearInterval(typewriterTimer)
+    typewriterTimer = null
+  }
+
   currentTypingMsg = msg
   typewriterQueue = ''
 
-  // 每 30ms 显示一个字符，模拟打字效果
+  // 每 24ms 显示少量字符，模拟更自然的流式打字效果
   typewriterTimer = setInterval(() => {
-    if (typewriterQueue.length > 0) {
-      // 每次取 1-2 个字符，增加自然感
-      const charCount = typewriterQueue.length > 1 && Math.random() > 0.7 ? 2 : 1
-      const chars = typewriterQueue.slice(0, charCount)
-      typewriterQueue = typewriterQueue.slice(charCount)
-      currentTypingMsg.content += chars
-      scrollToBottom()
-    }
-  }, 30)
+    if (!currentTypingMsg || typewriterQueue.length === 0) return
+
+    // 每次取 1-2 个字符，增加自然感
+    const charCount = typewriterQueue.length > 1 && Math.random() > 0.7 ? 2 : 1
+    const chars = typewriterQueue.slice(0, charCount)
+    typewriterQueue = typewriterQueue.slice(charCount)
+    currentTypingMsg.content += chars
+    scrollToBottom()
+  }, 24)
 }
 
 /**
@@ -117,7 +122,7 @@ async function sendMessage() {
   inputText.value = ''
   scrollToBottom()
 
-  const assistantMsg = { role: 'assistant', content: '', id: idCounter++, streaming: true }
+  const assistantMsg = reactive({ role: 'assistant', content: '', id: idCounter++, streaming: true })
   messages.value.push(assistantMsg)
   loading.value = true
   scrollToBottom()
@@ -181,9 +186,9 @@ async function sendMessage() {
       }
     }
 
-    // 等待打字机队列清空
+    // 等待打字机队列清空，确保最后一段也按动画展示
     while (typewriterQueue.length > 0) {
-      await new Promise(r => setTimeout(r, 50))
+      await new Promise((r) => setTimeout(r, 16))
     }
 
   } catch (err) {

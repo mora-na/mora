@@ -15,6 +15,7 @@ const TERMINAL_EVENT_NAMES = new Set([
   'complete',
   'completed',
   'stop',
+  'message_end',
 ])
 
 const suggestions = [
@@ -318,6 +319,7 @@ function isTerminalStreamEvent(event) {
 
     if (
       json.done === true ||
+      json.finish === true ||
       json.isDone === true ||
       json.is_end === true ||
       json.ended === true ||
@@ -334,6 +336,13 @@ function isTerminalStreamEvent(event) {
     }
 
     if (typeof json.event === 'string' && TERMINAL_EVENT_NAMES.has(json.event.trim().toLowerCase())) {
+      return true
+    }
+
+    if (
+      typeof json.type === 'string' &&
+      json.type.trim().toLowerCase() === 'message_end'
+    ) {
       return true
     }
 

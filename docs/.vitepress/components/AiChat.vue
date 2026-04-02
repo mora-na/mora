@@ -1,5 +1,5 @@
 <script setup>
-import {nextTick, onMounted, ref} from 'vue'
+import {nextTick, onMounted, onUnmounted, ref} from 'vue'
 
 /* global __AI_STREAM_URL__, __AI_BEARER_TOKEN__ */
 const STREAM_URL = __AI_STREAM_URL__
@@ -18,6 +18,11 @@ const messagesContainer = ref(null)
 const inputRef = ref(null)
 let idCounter = 1
 
+// 打字机效果相关
+let typewriterQueue = ''      // 待显示的文本队列
+let typewriterTimer = null    // 定时器
+let currentTypingMsg = null   // 当前正在打字的消息对象
+
 function scrollToBottom() {
   nextTick(() => {
     if (messagesContainer.value) {
@@ -27,34 +32,65 @@ function scrollToBottom() {
 }
 
 /**
+ * 启动打字机效果
+ */
+function startTypewriter(msg) {
+  currentTypingMsg = msg
+  typewriterQueue = ''
+
+  // 每 30ms 显示一个字符，模拟打字效果
+  typewriterTimer = setInterval(() => {
+    if (typewriterQueue.length > 0) {
+      // 每次取 1-2 个字符，增加自然感
+      const charCount = typewriterQueue.length > 1 && Math.random() > 0.7 ? 2 : 1
+      const chars = typewriterQueue.slice(0, charCount)
+      typewriterQueue = typewriterQueue.slice(charCount)
+      currentTypingMsg.content += chars
+      scrollToBottom()
+    }
+  }, 30)
+}
+
+/**
+ * 停止打字机效果，立即显示剩余内容
+ */
+function stopTypewriter() {
+  if (typewriterTimer) {
+    clearInterval(typewriterTimer)
+    typewriterTimer = null
+  }
+  // 立即显示剩余内容
+  if (currentTypingMsg && typewriterQueue.length > 0) {
+    currentTypingMsg.content += typewriterQueue
+    typewriterQueue = ''
+    scrollToBottom()
+  }
+  currentTypingMsg = null
+}
+
+/**
+ * 添加文本到打字机队列
+ */
+function queueText(text) {
+  typewriterQueue += text
+}
+
+/**
  * 解析 SSE 事件，提取 data 中的 JSON
- * SSE 格式：
- *   event: message
- *   data: {"type": "answer", "content": {"answer": "xxx"}}
- *   (空行分隔)
  */
 function parseSSEEvents(buffer) {
   const results = []
-  // 按双换行分割完整事件
   const eventBlocks = buffer.split(/\n\n+/)
 
   for (const block of eventBlocks) {
     if (!block.trim()) continue
-
     const lines = block.split('\n')
-    let eventData = null
-
     for (const line of lines) {
       if (line.startsWith('data:')) {
-        eventData = line.slice(5).trim()
+        results.push(line.slice(5).trim())
       }
     }
-
-    if (eventData) {
-      results.push(eventData)
-    }
   }
-
   return results
 }
 
@@ -64,7 +100,6 @@ function parseSSEEvents(buffer) {
 function extractAnswerFromJSON(jsonStr) {
   try {
     const json = JSON.parse(jsonStr)
-    // 只处理 type === 'answer' 且有 answer 内容的事件
     if (json.type === 'answer' && json.content?.answer) {
       return json.content.answer
     }
@@ -87,6 +122,9 @@ async function sendMessage() {
   loading.value = true
   scrollToBottom()
 
+  // 启动打字机效果
+  startTypewriter(assistantMsg)
+
   try {
     const headers = { 'Content-Type': 'application/json' }
     if (BEARER_TOKEN) headers['Authorization'] = `Bearer ${BEARER_TOKEN}`
@@ -98,6 +136,7 @@ async function sendMessage() {
     })
 
     if (!response.ok) {
+      stopTypewriter()
       assistantMsg.content = `请求失败：${response.status} ${response.statusText}`
       assistantMsg.streaming = false
       loading.value = false
@@ -114,22 +153,19 @@ async function sendMessage() {
 
       buffer += decoder.decode(value, { stream: true })
 
-      // 查找最后一个完整事件（以 \n\n 结尾）
+      // 查找最后一个完整事件
       const lastEventEnd = buffer.lastIndexOf('\n\n')
       if (lastEventEnd === -1) continue
 
-      // 提取可处理的部分
       const processable = buffer.slice(0, lastEventEnd)
       buffer = buffer.slice(lastEventEnd + 2)
 
-      // 解析事件
+      // 解析并添加到打字机队列
       const dataStrings = parseSSEEvents(processable)
-
       for (const dataStr of dataStrings) {
         const answer = extractAnswerFromJSON(dataStr)
         if (answer) {
-          assistantMsg.content += answer
-          scrollToBottom()
+          queueText(answer)
         }
       }
     }
@@ -140,13 +176,20 @@ async function sendMessage() {
       for (const dataStr of dataStrings) {
         const answer = extractAnswerFromJSON(dataStr)
         if (answer) {
-          assistantMsg.content += answer
+          queueText(answer)
         }
       }
     }
+
+    // 等待打字机队列清空
+    while (typewriterQueue.length > 0) {
+      await new Promise(r => setTimeout(r, 50))
+    }
+
   } catch (err) {
     assistantMsg.content = `网络错误：${err.message}`
   } finally {
+    stopTypewriter()
     assistantMsg.streaming = false
     loading.value = false
     scrollToBottom()
@@ -161,6 +204,7 @@ function handleKeydown(e) {
 }
 
 function clearChat() {
+  stopTypewriter()
   messages.value = [
     {
       role: 'assistant',
@@ -172,6 +216,13 @@ function clearChat() {
 
 onMounted(() => {
   inputRef.value?.focus()
+})
+
+onUnmounted(() => {
+  // 组件销毁时清理定时器
+  if (typewriterTimer) {
+    clearInterval(typewriterTimer)
+  }
 })
 </script>
 

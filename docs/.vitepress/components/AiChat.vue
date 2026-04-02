@@ -1185,6 +1185,9 @@ onUnmounted(() => {
   overflow: hidden;
   overscroll-behavior: none;
   height: 100%;
+  width: 100%;
+  max-width: 100%;
+  -webkit-text-size-adjust: 100%;
 }
 
 :global(html.ai-chat-page .VPContent),
@@ -1226,6 +1229,8 @@ onUnmounted(() => {
   right: 0;
   bottom: 0;
   left: 0;
+  width: 100%;
+  max-width: 100%;
   min-height: 0;
   padding: 0;
   overflow: hidden;
@@ -1767,7 +1772,7 @@ onUnmounted(() => {
     min-height: 38px;
     max-height: 38px;
     padding: 9px 12px;
-    font-size: 0.92rem;
+    font-size: 16px;
   }
 
   .chatgpt__send-btn {

@@ -8,6 +8,7 @@ const BEARER_TOKEN = __AI_BEARER_TOKEN__
 const greeting = '你好！我是 mora 的 AI 分身，可以直接问我任何问题。'
 const STREAM_REQUEST_TIMEOUT_MS = 90_000
 const AI_SESSION_STORAGE_KEY = 'mora-ai-session-id'
+const AI_CHAT_HISTORY_STORAGE_KEY = 'mora-ai-chat-history'
 const AI_RUN_ID_HEADER = 'X-Run-Id'
 const TERMINAL_STREAM_EVENT_TYPES = new Set([
   'done',
@@ -160,6 +161,125 @@ function resetChatSessionId() {
   syncSessionId(createSessionId())
 }
 
+function normalizeStoredMessage(message) {
+  if (!message || typeof message !== 'object') {
+    return null
+  }
+
+  const role = message.role === 'user' || message.role === 'assistant' ? message.role : ''
+  const content = typeof message.content === 'string' ? message.content : ''
+  const id = Number(message.id)
+
+  if (!role || !Number.isFinite(id)) {
+    return null
+  }
+
+  return {
+    role,
+    content,
+    id,
+  }
+}
+
+function getPersistableMessages() {
+  const snapshot = messages.value.map((message) => ({
+    role: message.role,
+    content: message.content,
+    id: message.id,
+  }))
+
+  if (typingMessage && typingBuffer) {
+    const snapshotTypingMessage = snapshot.find((message) => message.id === typingMessage.id)
+    if (snapshotTypingMessage) {
+      snapshotTypingMessage.content += typingBuffer
+    }
+  }
+
+  return snapshot
+}
+
+function persistChatHistory() {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  try {
+    window.sessionStorage.setItem(
+      AI_CHAT_HISTORY_STORAGE_KEY,
+      JSON.stringify({
+        version: 1,
+        messages: getPersistableMessages(),
+      })
+    )
+  } catch {
+    // sessionStorage 不可用或容量不足时忽略
+  }
+}
+
+function loadChatHistory() {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  try {
+    const stored = window.sessionStorage.getItem(AI_CHAT_HISTORY_STORAGE_KEY)
+    if (!stored) {
+      return null
+    }
+
+    const parsed = JSON.parse(stored)
+    const rawMessages = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray(parsed?.messages)
+        ? parsed.messages
+        : null
+
+    if (!rawMessages) {
+      return null
+    }
+
+    const restoredMessages = rawMessages
+      .map(normalizeStoredMessage)
+      .filter(Boolean)
+
+    if (!restoredMessages.length) {
+      return null
+    }
+
+    while (restoredMessages.length > 0) {
+      const lastMessage = restoredMessages[restoredMessages.length - 1]
+      if (lastMessage.role === 'assistant' && !lastMessage.content.trim()) {
+        restoredMessages.pop()
+        continue
+      }
+      break
+    }
+
+    return restoredMessages.length ? restoredMessages : null
+  } catch {
+    return null
+  }
+}
+
+function restoreChatHistory() {
+  const restoredMessages = loadChatHistory()
+
+  if (restoredMessages) {
+    messages.value = restoredMessages.map((message) => ({
+      role: message.role,
+      content: message.content,
+      id: message.id,
+    }))
+
+    idCounter = restoredMessages.reduce((maxId, message) => Math.max(maxId, message.id), -1) + 1
+  } else {
+    idCounter = 1
+  }
+
+  loading.value = false
+  persistChatHistory()
+}
+
 function finishTypingSession() {
   typingStreamFinished = true
   scheduleTypingTick()
@@ -179,6 +299,7 @@ function completeTypingSession() {
   lastIncomingText = ''
   loading.value = false
   activeController = null
+  persistChatHistory()
 }
 
 function startTypingSession(msg) {
@@ -196,6 +317,7 @@ function startTypingSession(msg) {
 function enqueueTypingText(text) {
   if (!text) return
   typingBuffer += text
+  persistChatHistory()
   scheduleTypingTick()
 }
 
@@ -420,11 +542,11 @@ async function sendMessage(questionText) {
   const userMessage = { role: 'user', content: text, id: idCounter++ }
   messages.value.push(userMessage)
   inputText.value = ''
-  scrollToBottom()
 
   const assistantMsg = createAssistantMessage()
   messages.value.push(assistantMsg)
   loading.value = true
+  persistChatHistory()
   scrollToBottom()
 
   startTypingSession(assistantMsg)
@@ -448,6 +570,7 @@ async function sendMessage(questionText) {
     assistantMsg.streaming = false
     loading.value = false
     activeController = null
+    persistChatHistory()
     scrollToBottom()
   }
 
@@ -640,6 +763,7 @@ function clearChat() {
   messages.value = [
     createGreetingMessage(),
   ]
+  persistChatHistory()
   scrollToBottom()
 }
 
@@ -647,9 +771,11 @@ onMounted(() => {
   syncSessionId(loadSessionId())
   setAiChatPageLocked(true)
   refreshAiChatTopOffset()
+  restoreChatHistory()
   resizeListener = () => refreshAiChatTopOffset()
   window.addEventListener('resize', resizeListener)
   inputRef.value?.focus()
+  scrollToBottom()
 })
 
 onUnmounted(() => {

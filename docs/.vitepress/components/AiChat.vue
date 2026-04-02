@@ -26,6 +26,44 @@ function scrollToBottom() {
   })
 }
 
+/**
+ * 解析 SSE 流式响应
+ * 格式：
+ *   event: message
+ *   data: {"type": "answer", "content": {"answer": "xxx"}, ...}
+ */
+function parseSSE(text) {
+  const events = []
+  const lines = text.split('\n')
+  let currentEvent = null
+
+  for (const line of lines) {
+    if (line.startsWith('event:')) {
+      if (currentEvent) events.push(currentEvent)
+      currentEvent = { event: line.slice(6).trim(), data: '' }
+    } else if (line.startsWith('data:')) {
+      if (currentEvent) {
+        currentEvent.data = line.slice(5).trim()
+      }
+    } else if (line.trim() === '' && currentEvent) {
+      events.push(currentEvent)
+      currentEvent = null
+    }
+  }
+  if (currentEvent) events.push(currentEvent)
+  return events
+}
+
+/**
+ * 处理 SSE 事件，提取 answer 内容
+ */
+function extractAnswer(json) {
+  if (json.type === 'answer' && json.content?.answer) {
+    return json.content.answer
+  }
+  return null
+}
+
 async function sendMessage() {
   const text = inputText.value.trim()
   if (!text || loading.value) return
@@ -65,66 +103,52 @@ async function sendMessage() {
       if (done) break
 
       buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop()
 
-      for (const line of lines) {
-        const trimmed = line.trim()
-        if (!trimmed) continue
+      // 解析 SSE 事件
+      const events = parseSSE(buffer)
 
-        if (trimmed.startsWith('data:')) {
-          const data = trimmed.slice(5).trim()
-          if (data === '[DONE]') continue
+      // 保留最后一个未完成的事件（可能数据不完整）
+      const lastNewline = buffer.lastIndexOf('\n\n')
+      if (lastNewline >= 0) {
+        buffer = buffer.slice(lastNewline + 2)
+      }
+
+      for (const event of events) {
+        if (event.event === 'message' && event.data) {
           try {
-            const json = JSON.parse(data)
-            const delta =
-              json.choices?.[0]?.delta?.content ??
-              json.delta?.text ??
-              json.content ??
-              json.text ??
-              json.message ??
-              (typeof json === 'string' ? json : null)
-            if (delta) {
-              assistantMsg.content += delta
+            const json = JSON.parse(event.data)
+            const answer = extractAnswer(json)
+            if (answer) {
+              assistantMsg.content += answer
               scrollToBottom()
+            }
+            // 处理错误
+            if (json.type === 'error' || json.content?.error) {
+              assistantMsg.content = json.content?.error || '发生错误'
             }
           } catch {
-            // 非 JSON 的 data，直接拼接
-            if (data && data !== '[DONE]') {
-              assistantMsg.content += data
-              scrollToBottom()
-            }
+            // JSON 解析失败，忽略
           }
-        } else if (trimmed.startsWith('{') || trimmed.startsWith('"')) {
-          // 纯 JSON 行（无 SSE 前缀）
-          try {
-            const json = JSON.parse(trimmed)
-            const delta =
-              json.choices?.[0]?.delta?.content ??
-              json.delta?.text ??
-              json.content ??
-              json.text ??
-              json.message ??
-              (typeof json === 'string' ? json : null)
-            if (delta) {
-              assistantMsg.content += delta
-              scrollToBottom()
-            }
-          } catch {
-            assistantMsg.content += trimmed
-            scrollToBottom()
-          }
-        } else {
-          // 纯文本行
-          assistantMsg.content += trimmed
-          scrollToBottom()
         }
       }
     }
 
-    // 处理 buffer 中剩余内容
+    // 处理剩余 buffer
     if (buffer.trim()) {
-      assistantMsg.content += buffer.trim()
+      const events = parseSSE(buffer)
+      for (const event of events) {
+        if (event.event === 'message' && event.data) {
+          try {
+            const json = JSON.parse(event.data)
+            const answer = extractAnswer(json)
+            if (answer) {
+              assistantMsg.content += answer
+            }
+          } catch {
+            // ignore
+          }
+        }
+      }
     }
   } catch (err) {
     assistantMsg.content = `网络错误：${err.message}`

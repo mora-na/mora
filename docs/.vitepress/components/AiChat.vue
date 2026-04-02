@@ -14,11 +14,7 @@ const suggestions = [
 ]
 
 const messages = ref([
-  {
-    role: 'assistant',
-    content: greeting,
-    id: 0,
-  },
+  createGreetingMessage(),
 ])
 
 const inputText = ref('')
@@ -33,6 +29,14 @@ let typingBuffer = ''
 let typingTimer = null
 let typingStreamFinished = false
 let lastIncomingText = ''
+
+function createGreetingMessage() {
+  return {
+    role: 'assistant',
+    content: greeting,
+    id: 0,
+  }
+}
 
 function scrollToBottom() {
   nextTick(() => {
@@ -211,6 +215,9 @@ async function sendMessage(textOverride = '') {
     activeController = null
   }
 
+  resetTypingState()
+  messages.value = [createGreetingMessage()]
+
   const userMessage = { role: 'user', content: text, id: idCounter++ }
   messages.value.push(userMessage)
   inputText.value = ''
@@ -320,11 +327,7 @@ function clearChat() {
   resetTypingState()
   loading.value = false
   messages.value = [
-    {
-      role: 'assistant',
-      content: greeting,
-      id: idCounter++,
-    },
+    createGreetingMessage(),
   ]
   scrollToBottom()
 }

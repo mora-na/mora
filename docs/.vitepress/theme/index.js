@@ -3,6 +3,7 @@ import DefaultTheme from 'vitepress/theme';
 import './style.css';
 import SudokuGame from '../components/SudokuGame.vue';
 import DocHeader from '../components/DocHeader.vue';
+import AiChat from '../components/AiChat.vue';
 
 export default {
   ...DefaultTheme,
@@ -14,5 +15,6 @@ export default {
   enhanceApp(ctx) {
     DefaultTheme.enhanceApp?.(ctx);
     ctx.app.component('SudokuGame', SudokuGame);
+    ctx.app.component('AiChat', AiChat);
   },
 };

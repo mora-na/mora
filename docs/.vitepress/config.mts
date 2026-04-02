@@ -1,6 +1,9 @@
 import {defineConfig} from 'vitepress'
+// loadEnv 由 VitePress 内部的 Vite 实例导出，无需单独安装 vite
+import {loadEnv} from 'vitepress/dist/node/index.js'
 
 const base = '/'
+const env = loadEnv('', process.cwd(), 'VITE')
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
@@ -10,12 +13,19 @@ export default defineConfig({
   head: [
     ['link', { rel: 'icon', type: 'image/png', href: `${base}favicon.png` }],
   ],
+  vite: {
+    define: {
+      __AI_STREAM_URL__: JSON.stringify(env.VITE_AI_STREAM_URL ?? ''),
+      __AI_BEARER_TOKEN__: JSON.stringify(env.VITE_AI_BEARER_TOKEN ?? ''),
+    },
+  },
   themeConfig: {
     nav: [
       { text: '首页', link: '/' },
       { text: '碎片', link: '/ohmyzsh-starship-zinit' },
       { text: '游戏', link: '/sudoku' },
-      { text: '备忘', link: '/command' }
+      { text: '备忘', link: '/command' },
+      { text: 'AI 分身', link: '/ai' }
     ],
 
     sidebar: [
@@ -39,6 +49,12 @@ export default defineConfig({
         text: '备忘',
         items: [
           { text: 'Command', link: '/command' },
+        ]
+      },
+      {
+        text: 'AI 分身',
+        items: [
+          { text: '与 mora 对话', link: '/ai' },
         ]
       }
     ],

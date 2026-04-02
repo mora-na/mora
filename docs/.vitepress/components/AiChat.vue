@@ -9,6 +9,11 @@ const greeting = '你好！我是 mora 的 AI 分身，可以直接问我任何�
 const STREAM_REQUEST_TIMEOUT_MS = 90_000
 const AI_SESSION_STORAGE_KEY = 'mora-ai-session-id'
 const AI_RUN_ID_HEADER = 'X-Run-Id'
+const TERMINAL_STREAM_EVENT_TYPES = new Set([
+  'done',
+  'message_end',
+  'message_stop',
+])
 
 const suggestions = [
   '介绍一下你的技术栈'
@@ -164,6 +169,9 @@ function completeTypingSession() {
   if (typingTimer) {
     clearTimeout(typingTimer)
     typingTimer = null
+  }
+  if (typingMessage) {
+    typingMessage.streaming = false
   }
   typingMessage = null
   typingBuffer = ''
@@ -489,6 +497,7 @@ async function sendMessage(questionText) {
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
+    let streamEndedBySignal = false
 
     const processStreamEvent = (event) => {
       const data = parseStreamPayload(event.payload)
@@ -508,7 +517,12 @@ async function sendMessage(questionText) {
         return true
       }
 
-      if (eventType === 'done' || eventType === 'tool_call' || eventType === 'tool_result') {
+      if (TERMINAL_STREAM_EVENT_TYPES.has(eventType)) {
+        streamEndedBySignal = true
+        return true
+      }
+
+      if (eventType === 'tool_call' || eventType === 'tool_result') {
         return true
       }
 
@@ -540,17 +554,36 @@ async function sendMessage(questionText) {
         if (!processStreamEvent(event)) {
           return
         }
+        if (streamEndedBySignal) {
+          break
+        }
+      }
+
+      if (streamEndedBySignal) {
+        clearRequestTimeout()
+        break
       }
     }
 
     buffer += decoder.decode()
     buffer = buffer.replace(/\r\n/g, '\n')
 
-    if (buffer.trim()) {
+    if (!streamEndedBySignal && buffer.trim()) {
       for (const event of parseSSEEvents(buffer)) {
         if (!processStreamEvent(event)) {
           return
         }
+        if (streamEndedBySignal) {
+          break
+        }
+      }
+    }
+
+    if (streamEndedBySignal) {
+      try {
+        await reader.cancel()
+      } catch {
+        // 终止信号后的取消只用于尽快释放连接，忽略二次错误
       }
     }
 

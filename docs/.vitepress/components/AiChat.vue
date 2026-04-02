@@ -6,6 +6,16 @@ const STREAM_URL = __AI_STREAM_URL__
 const BEARER_TOKEN = __AI_BEARER_TOKEN__
 
 const greeting = '你好！我是 mora 的 AI 分身，可以直接问我任何问题。'
+const STREAM_REQUEST_TIMEOUT_MS = 90_000
+const TERMINAL_EVENT_NAMES = new Set([
+  'done',
+  'end',
+  'finish',
+  'finished',
+  'complete',
+  'completed',
+  'stop',
+])
 
 const suggestions = [
   '介绍一下你的技术栈'
@@ -28,6 +38,9 @@ let typingBuffer = ''
 let typingTimer = null
 let typingStreamFinished = false
 let lastIncomingText = ''
+let requestTimeoutId = null
+let timedOutRequestId = null
+let currentRequestId = 0
 
 const AI_CHAT_TOP_OFFSET_VAR = '--ai-chat-top-offset'
 
@@ -88,6 +101,21 @@ function resetTypingState() {
   typingBuffer = ''
   typingStreamFinished = false
   lastIncomingText = ''
+}
+
+function flushTypingBuffer() {
+  if (typingMessage && typingBuffer) {
+    typingMessage.content += typingBuffer
+  }
+
+  typingBuffer = ''
+}
+
+function clearRequestTimeout() {
+  if (requestTimeoutId) {
+    clearTimeout(requestTimeoutId)
+    requestTimeoutId = null
+  }
 }
 
 function finishTypingSession() {
@@ -185,26 +213,58 @@ function appendIncomingText(text) {
 
 function parseSSEEvents(buffer) {
   const results = []
-  const blocks = buffer.split(/\n\n+/)
+  const normalizedBuffer = buffer.replace(/\r\n/g, '\n')
+  const blocks = normalizedBuffer.split(/\n\n+/)
 
   for (const block of blocks) {
     if (!block.trim()) continue
 
+    let event = ''
+    let sawSseField = false
+    const dataLines = []
+
     for (const line of block.split('\n')) {
+      if (!line.trim()) continue
+
+      if (line.startsWith(':')) {
+        sawSseField = true
+        continue
+      }
+
+      if (line.startsWith('event:')) {
+        sawSseField = true
+        event = line.slice(6).trim().toLowerCase()
+        continue
+      }
+
       if (line.startsWith('data:')) {
-        results.push(line.slice(5).trim())
+        sawSseField = true
+        dataLines.push(line.slice(5).replace(/^ /, ''))
+        continue
+      }
+
+      if (line.startsWith('id:') || line.startsWith('retry:')) {
+        sawSseField = true
       }
     }
+
+    results.push({
+      event,
+      payload: sawSseField ? dataLines.join('\n') : block.trim(),
+    })
   }
 
   return results
 }
 
 function extractTextFromPayload(payload) {
-  if (!payload || payload === '[DONE]') return null
+  if (!payload) return null
+
+  const normalizedPayload = payload.trim()
+  if (!normalizedPayload || normalizedPayload === '[DONE]' || normalizedPayload === '[done]') return null
 
   try {
-    const json = JSON.parse(payload)
+    const json = JSON.parse(normalizedPayload)
 
     if (typeof json === 'string') return json
     if (typeof json.answer === 'string') return json.answer
@@ -225,8 +285,77 @@ function extractTextFromPayload(payload) {
 
     return null
   } catch {
-    return null
+    return normalizedPayload
   }
+}
+
+function isTerminalStreamEvent(event) {
+  if (!event) return false
+
+  const eventName = typeof event.event === 'string' ? event.event.trim().toLowerCase() : ''
+  if (eventName && TERMINAL_EVENT_NAMES.has(eventName)) {
+    return true
+  }
+
+  const payload = typeof event.payload === 'string' ? event.payload.trim() : ''
+  if (!payload) return false
+
+  if (payload === '[DONE]' || payload === '[done]') {
+    return true
+  }
+
+  try {
+    const json = JSON.parse(payload)
+
+    if (typeof json === 'string') {
+      const normalized = json.trim().toLowerCase()
+      return normalized === '[done]' || TERMINAL_EVENT_NAMES.has(normalized)
+    }
+
+    if (!json || typeof json !== 'object') {
+      return false
+    }
+
+    if (
+      json.done === true ||
+      json.isDone === true ||
+      json.is_end === true ||
+      json.ended === true ||
+      json.finished === true ||
+      json.complete === true ||
+      json.completed === true ||
+      json.stop === true
+    ) {
+      return true
+    }
+
+    if (typeof json.type === 'string' && TERMINAL_EVENT_NAMES.has(json.type.trim().toLowerCase())) {
+      return true
+    }
+
+    if (typeof json.event === 'string' && TERMINAL_EVENT_NAMES.has(json.event.trim().toLowerCase())) {
+      return true
+    }
+
+    if (json.finish_reason) {
+      return true
+    }
+
+    return Array.isArray(json.choices) && json.choices.some((choice) => choice?.finish_reason)
+  } catch {
+    return false
+  }
+}
+
+function armRequestTimeout(requestId, controller) {
+  clearRequestTimeout()
+
+  requestTimeoutId = window.setTimeout(() => {
+    if (requestId !== currentRequestId) return
+
+    timedOutRequestId = requestId
+    controller.abort()
+  }, STREAM_REQUEST_TIMEOUT_MS)
 }
 
 function createAssistantMessage() {
@@ -243,10 +372,17 @@ async function sendMessage(questionText) {
   if (!text) return
 
   if (activeController) {
+    currentRequestId += 1
+    timedOutRequestId = null
+    clearRequestTimeout()
     activeController.abort()
     activeController = null
   }
 
+  currentRequestId += 1
+  const requestId = currentRequestId
+  timedOutRequestId = null
+  clearRequestTimeout()
   resetTypingState()
 
   const userMessage = { role: 'user', content: text, id: idCounter++ }
@@ -263,9 +399,28 @@ async function sendMessage(questionText) {
 
   const controller = new AbortController()
   activeController = controller
+  armRequestTimeout(requestId, controller)
+
+  const failRequest = (message) => {
+    if (requestId !== currentRequestId) return
+
+    clearRequestTimeout()
+    flushTypingBuffer()
+    resetTypingState()
+    assistantMsg.content = assistantMsg.content
+      ? `${assistantMsg.content}\n\n${message}`
+      : message
+    assistantMsg.streaming = false
+    loading.value = false
+    activeController = null
+    scrollToBottom()
+  }
 
   try {
-    const headers = { 'Content-Type': 'application/json' }
+    const headers = {
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream, application/json;q=0.9, text/plain;q=0.8',
+    }
     if (BEARER_TOKEN) headers.Authorization = `Bearer ${BEARER_TOKEN}`
 
     const response = await fetch(STREAM_URL, {
@@ -276,30 +431,29 @@ async function sendMessage(questionText) {
     })
 
     if (!response.ok) {
-      resetTypingState()
-      assistantMsg.content = `请求失败：${response.status} ${response.statusText}`
-      assistantMsg.streaming = false
-      loading.value = false
+      failRequest(`请求失败：${response.status} ${response.statusText}`)
       return
     }
 
     if (!response.body) {
-      resetTypingState()
-      assistantMsg.content = '请求成功，但响应体为空。'
-      assistantMsg.streaming = false
-      loading.value = false
+      failRequest('请求成功，但响应体为空。')
       return
     }
 
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
+    let streamEndedBySignal = false
 
     while (true) {
       const { done, value } = await reader.read()
-      if (done) break
+      if (done) {
+        clearRequestTimeout()
+        break
+      }
 
       buffer += decoder.decode(value, { stream: true })
+      buffer = buffer.replace(/\r\n/g, '\n')
 
       const lastEventEnd = buffer.lastIndexOf('\n\n')
       if (lastEventEnd === -1) continue
@@ -307,32 +461,64 @@ async function sendMessage(questionText) {
       const processable = buffer.slice(0, lastEventEnd)
       buffer = buffer.slice(lastEventEnd + 2)
 
-      for (const payload of parseSSEEvents(processable)) {
-        const textChunk = extractTextFromPayload(payload)
+      for (const event of parseSSEEvents(processable)) {
+        const textChunk = extractTextFromPayload(event.payload)
         if (textChunk) {
           appendIncomingText(textChunk)
+        }
+
+        if (isTerminalStreamEvent(event)) {
+          streamEndedBySignal = true
+          break
+        }
+      }
+
+      if (streamEndedBySignal) {
+        clearRequestTimeout()
+        break
+      }
+    }
+
+    buffer += decoder.decode()
+    buffer = buffer.replace(/\r\n/g, '\n')
+
+    if (buffer.trim()) {
+      for (const event of parseSSEEvents(buffer)) {
+        const textChunk = extractTextFromPayload(event.payload)
+        if (textChunk) {
+          appendIncomingText(textChunk)
+        }
+
+        if (isTerminalStreamEvent(event)) {
+          streamEndedBySignal = true
+          clearRequestTimeout()
+          break
         }
       }
     }
 
-    if (buffer.trim()) {
-      for (const payload of parseSSEEvents(buffer)) {
-        const textChunk = extractTextFromPayload(payload)
-        if (textChunk) {
-          appendIncomingText(textChunk)
-        }
+    if (streamEndedBySignal) {
+      try {
+        await reader.cancel()
+      } catch {
+        // 忽略取消流时的二次错误
       }
     }
 
     finishTypingSession()
   } catch (err) {
-    if (err?.name === 'AbortError') return
+    if (err?.name === 'AbortError') {
+      if (timedOutRequestId === requestId) {
+        failRequest('请求超时，请稍后重试。')
+      }
+      return
+    }
 
-    resetTypingState()
-    assistantMsg.content = `网络错误：${err?.message || '请求失败'}`
-    assistantMsg.streaming = false
-    loading.value = false
+    failRequest(`网络错误：${err?.message || '请求失败'}`)
   } finally {
+    if (requestId === currentRequestId) {
+      clearRequestTimeout()
+    }
     scrollToBottom()
   }
 }
@@ -359,6 +545,10 @@ function useSuggestion(text) {
 }
 
 function clearChat() {
+  currentRequestId += 1
+  timedOutRequestId = null
+  clearRequestTimeout()
+
   if (activeController) {
     activeController.abort()
     activeController = null
@@ -382,6 +572,9 @@ onMounted(() => {
 
 onUnmounted(() => {
   setAiChatPageLocked(false)
+  currentRequestId += 1
+  timedOutRequestId = null
+  clearRequestTimeout()
 
   if (resizeListener) {
     window.removeEventListener('resize', resizeListener)

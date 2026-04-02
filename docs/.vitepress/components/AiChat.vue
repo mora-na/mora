@@ -579,15 +579,13 @@ async function sendMessage(questionText) {
       }
     }
 
-    if (streamEndedBySignal) {
-      try {
-        await reader.cancel()
-      } catch {
-        // 终止信号后的取消只用于尽快释放连接，忽略二次错误
-      }
-    }
-
     finishTypingSession()
+
+    if (streamEndedBySignal) {
+      void reader.cancel().catch(() => {
+        // 终止信号后的取消只用于尽快释放连接，忽略二次错误
+      })
+    }
   } catch (err) {
     if (err?.name === 'AbortError') {
       if (timedOutRequestId === requestId) {

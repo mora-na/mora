@@ -33,6 +33,7 @@ export default defineConfig({
       {
         text: '碎片',
         items: [
+          { text: 'FinderToolkit 开发日志', link: '/finder-toolkit-development-log' },
           { text: 'Sudoku Development Log', link: '/sudoku-development-log' },
           { text: '告别 oh-my-zsh 启动卡顿', link: '/ohmyzsh-starship-zinit' },
           { text: 'Clash Party TUN on macOS', link: '/clash-party-tun-macos' },

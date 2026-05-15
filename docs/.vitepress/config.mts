@@ -8,6 +8,7 @@ const env = loadEnv('', process.cwd(), 'VITE')
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
   base,
+  cleanUrls: true,
   title: "mora",
   description: "技术文章、命令备忘与游戏。",
   head: [

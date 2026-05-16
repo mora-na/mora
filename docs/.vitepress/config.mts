@@ -4,6 +4,16 @@ import {loadEnv} from 'vitepress/dist/node/index.js'
 
 const base = '/'
 const env = loadEnv('', process.cwd(), 'VITE')
+const fragments = [
+  { text: 'PaddleOCR-VL 1.5 开发日志', link: '/paddleocr-vl-1-5-q4-k-m-development-log' },
+  { text: 'AutoFillingForm 开发日志', link: '/autofillingform-development-log' },
+  { text: 'FinderToolkit 开发日志', link: '/finder-toolkit-development-log' },
+  { text: 'Sudoku Development Log', link: '/sudoku-development-log' },
+  { text: '告别 oh-my-zsh 启动卡顿', link: '/ohmyzsh-starship-zinit' },
+  { text: 'Clash Party TUN on macOS', link: '/clash-party-tun-macos' },
+  { text: 'Cloudflare Workers 超时排障', link: '/cloudflare-workers-timeout-tracing' },
+  { text: 'openclaw-gateway-startup-oom-troubleshooting', link: '/openclaw-gateway-startup-oom-troubleshooting' },
+]
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
@@ -23,7 +33,7 @@ export default defineConfig({
   themeConfig: {
     nav: [
       { text: '首页', link: '/' },
-      { text: '碎片', link: '/ohmyzsh-starship-zinit' },
+      { text: '碎片', link: fragments[0].link },
       { text: '游戏', link: '/sudoku' },
       { text: '备忘', link: '/command' },
       { text: 'AI 分身', link: '/ai' }
@@ -32,15 +42,7 @@ export default defineConfig({
     sidebar: [
       {
         text: '碎片',
-        items: [
-          { text: 'AutoFillingForm 开发日志', link: '/autofillingform-development-log' },
-          { text: 'FinderToolkit 开发日志', link: '/finder-toolkit-development-log' },
-          { text: 'Sudoku Development Log', link: '/sudoku-development-log' },
-          { text: '告别 oh-my-zsh 启动卡顿', link: '/ohmyzsh-starship-zinit' },
-          { text: 'Clash Party TUN on macOS', link: '/clash-party-tun-macos' },
-          { text: 'Cloudflare Workers 超时排障', link: '/cloudflare-workers-timeout-tracing' },
-          { text: 'openclaw-gateway-startup-oom-troubleshooting', link: '/openclaw-gateway-startup-oom-troubleshooting' },
-        ]
+        items: fragments
       },
       {
         text: '游戏',

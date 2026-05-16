@@ -9,7 +9,7 @@ hero:
   actions:
     - theme: brand
       text: Fragments
-      link: /sudoku-development-log
+      link: /autofillingform-development-log
     - theme: alt
       text: Command
       link: /command

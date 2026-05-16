@@ -122,6 +122,9 @@ npm run docs:preview
 
 | 文章 | 描述 |
 |------|------|
+| [PaddleOCR-VL 1.5 开发日志](docs/paddleocr-vl-1-5-q4-k-m-development-log.md) | 记录无 GPU、4GB RAM 约束下的模型选型、量化推理、引擎切换、输入预算和兜底机制 |
+| [AutoFillingForm 开发日志](docs/autofillingform-development-log.md) | 自动填单插件的录制、回放、校验与速度配置开发过程 |
+| [FinderToolkit 开发日志](docs/finder-toolkit-development-log.md) | Finder 右键菜单工具从扩展架构到手动签名打包的完整开发过程 |
 | [Sudoku Development Log](docs/sudoku-development-log.md) | 数独游戏的完整开发日志，包含状态建模、出题算法、冲突检测与回溯求解 |
 | [告别 oh-my-zsh 启动卡顿](docs/ohmyzsh-starship-zinit.md) | 从终端启动变慢问题出发，使用 Starship + Zint 重构 zsh 环境 |
 | [Clash Party TUN on macOS](docs/clash-party-tun-macos.md) | macOS 上 Clash Party TUN 模式失效排查与环境变量兜底脚本 |
